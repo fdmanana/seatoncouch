@@ -1,0 +1,10 @@
+{
+  "admins": {
+    "names": ["joe"],
+    "roles": ["test_admin", "superuser"]
+  },
+  "readers": {
+    "names": ["fdmanana"],
+    "roles": []
+  }
+}

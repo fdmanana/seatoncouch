@@ -1,0 +1,11 @@
+- Support attachments in the doc template, using a syntax like:
+
+  "_attachments": {
+    "foo.txt": {
+      "content_type": "text/plain",
+      # #{file} directive must be enclosed by double quotes
+      "data": "#{file(my-file.txt)}"
+    }
+  }
+
+- Allow creation of user accounts
