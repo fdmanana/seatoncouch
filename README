@@ -3,4 +3,4 @@ An utility for populating a CouchDB instance with test data.
 Used for development purposes and for measuring CouchDB performance.
 The docs to add to CouchDB databases are specified using templates.
 
-Used the flag --help (-h) to get the list of available options.
+Use the flag --help (-h) to get the list of available options.
