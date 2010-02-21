@@ -3,4 +3,63 @@ An utility for populating a CouchDB instance with test data.
 Used for development purposes and for measuring CouchDB performance.
 The docs to add to CouchDB databases are specified using templates.
 
-Use the flag --help (-h) to get the list of available options.
+
+$./seatoncouch.rb --help
+
+Usage:  seatoncouch.rb [OPTION]*
+
+  Tool to populate a CouchDB instance with several DBs, docs and users.
+  Used for development purposes and measuring CouchDB performance.
+
+Options:
+
+  -h, --help                     Displays this help and exits.
+
+      --debug                    Enable debug mode.
+
+      --host                     Name or address of the CouchDB instance.
+                                 Defaults to `localhost'
+
+      --port                     Port of the CouchDB instance.
+                                 Defaults to `5984'
+
+      --dbs count                Number of DBs to create.
+                                 Defaults to `10'
+
+      --docs count               Number of docs to create per DB.
+                                 Defaults to `100'
+
+      --users count              Number of users to create.
+                                 Defaults to `10'
+
+      --db-start-id number       The ID to assign to the first created DB.
+                                 Subsequent DBs will have an ID which is an
+                                 increment of this initial ID.
+                                 Defaults to `1'
+
+      --db-prefix string         A string prefix to prepend to each DB name.
+                                 Defaults to `testdb'
+
+      --doc-start-id number      The ID to assign to the first created doc for
+                                 each created DB.
+                                 Subsequent docs will have an ID which is an
+                                 increment of this initial ID.
+                                 Defaults to `1'
+
+      --doc-prefix string        A string prefix to prepend to each doc name.
+                                 Defaults to `doc'
+
+      --user-start-id number     The ID to assign to the first created user.
+                                 Subsequent users will have an ID which is an
+                                 increment of this initial ID.
+                                 Defaults to `1'
+
+      --user-prefix string       A string prefix to prepend to each user name.
+                                 Defaults to `user'
+
+      --doc-tpl file             The template to use for each doc.
+                                 Defaults to `default_doc.tpl'
+
+      --security-doc file        A file containing the JSON security document
+                                 to add to each created DB.
+                                 Defaults to none.
