@@ -60,6 +60,6 @@ Options:
       --doc-tpl file             The template to use for each doc.
                                  Defaults to `default_doc.tpl'
 
-      --security-doc file        A file containing the JSON security document
+      --security-obj file        A file containing the JSON security object
                                  to add to each created DB.
                                  Defaults to none.
