@@ -48,7 +48,7 @@ module SeatOnCouch
     DEFAULT_DOC_PREFIX = "doc"
     DEFAULT_USER_PREFIX = "user"
     DEFAULT_DOC_TPL = 'default_doc.tpl'
-    DEFAULT_SEC_DOC = nil
+    DEFAULT_SEC_OBJ = nil
 
 
     def self.showhelp
@@ -107,7 +107,7 @@ Options:
       --doc-tpl file             The template to use for each doc.
                                  Defaults to `#{DEFAULT_DOC_TPL}'
 
-      --security-doc file        A file containing the JSON security document
+      --sec-obj file             A file containing the JSON security object
                                  to add to each created DB.
                                  Defaults to none.
 
@@ -133,7 +133,7 @@ _EOH_
         attr_accessor :doc_prefix
         attr_accessor :user_prefix
         attr_accessor :doc_tpl
-        attr_accessor :sec_doc
+        attr_accessor :sec_obj
     end
 
 
@@ -152,12 +152,12 @@ _EOH_
 
             create_docs db_name
 
-            if not $settings.sec_doc.nil?
-                r = from_json(put("/#{db_name}/_security", $settings.sec_doc).body)
+            if not $settings.sec_obj.nil?
+                r = from_json(put("/#{db_name}/_security", $settings.sec_obj).body)
                 if not r["ok"]
-                    log_error("Error setting the security doc for DB `#{db_name}'", r)
+                    log_error("Error setting the security object for DB `#{db_name}'", r)
                 else
-                    log_info "Updated the security doc for DB `#{db_name}'"
+                    log_info "Updated the security object for DB `#{db_name}'"
                 end
             end
         end
@@ -344,7 +344,7 @@ _EOH_
         $settings.doc_prefix = DEFAULT_DOC_PREFIX
         $settings.user_prefix = DEFAULT_USER_PREFIX
         $settings.doc_tpl = DEFAULT_DOC_TPL
-        $settings.sec_doc = DEFAULT_SEC_DOC
+        $settings.sec_obj = DEFAULT_SEC_OBJ
 
         opts = GetoptLong.new(
             ['--debug', GetoptLong::NO_ARGUMENT],
@@ -360,7 +360,7 @@ _EOH_
             ['--doc-prefix', GetoptLong::REQUIRED_ARGUMENT],
             ['--user-prefix', GetoptLong::REQUIRED_ARGUMENT],
             ['--doc-tpl', GetoptLong::REQUIRED_ARGUMENT],
-            ['--security-doc', GetoptLong::REQUIRED_ARGUMENT]
+            ['--sec-obj', GetoptLong::REQUIRED_ARGUMENT]
         )
         opts.quiet = true
 
@@ -393,8 +393,8 @@ _EOH_
                         $settings.user_prefix = arg
                     when '--doc-tpl'
                         $settings.doc_tpl = arg
-                    when '--security-doc'
-                        $settings.sec_doc = arg
+                    when '--sec-obj'
+                        $settings.sec_obj = arg
                 end
             end
         rescue GetoptLong::Error
@@ -403,7 +403,7 @@ _EOH_
         end
 
         parse_doc_tpl $settings.doc_tpl
-        parse_sec_doc($settings.sec_doc) unless $settings.sec_doc.nil?
+        parse_sec_obj($settings.sec_obj) unless $settings.sec_obj.nil?
     end
 
 
@@ -427,17 +427,17 @@ _EOH_
     end
 
 
-    def self.parse_sec_doc(sec_doc_file)
-        f = File.open(sec_doc_file) rescue nil
+    def self.parse_sec_obj(sec_obj_file)
+        f = File.open(sec_obj_file) rescue nil
 
         if f.nil?
-            log_error "Couldn't open the security doc file `#{sec_doc_file}'"
+            log_error "Couldn't open the security object file `#{sec_obj_file}'"
             exit 1
         end
 
-        $settings.sec_doc = from_json(f.read)
+        $settings.sec_obj = from_json(f.read)
         f.close
-        $settings.sec_doc
+        $settings.sec_obj
     end
 
 
