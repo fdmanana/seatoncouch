@@ -205,7 +205,6 @@ _EOH_
 
 
     def self.upload_doc_atts(db_name, doc, doc_rev, atts)
-        log_info "atts: #{atts.inspect}"
         doc_id = doc["_id"]
         doc_path = "/#{db_name}/#{doc_id}"
 
@@ -257,7 +256,39 @@ _EOH_
 
         tpl.gsub!(/\\#/, '#')
 
-        from_json tpl
+        doc_tpl = from_json tpl
+        check_conditionals doc_tpl
+    end
+
+
+    def self.check_conditionals(doc_tpl)
+        del_keys = []
+        rename_keys = []
+        doc_tpl.each_key do |k|
+            if k =~ /^\s*#\{if\((.*)\)\}/
+                expr = $1
+                if not eval(expr)
+                    del_keys.push k
+                else
+                    rename_keys.push k
+                end
+            end
+
+            if doc_tpl[k].is_a? Hash
+                check_conditionals doc_tpl[k]
+            end
+        end
+
+        del_keys.each do |k|
+            doc_tpl.delete k
+        end
+        rename_keys.each do |k|
+            new_k = k.gsub(/^\s*#\{if\((.*)\)\}/, '')
+            doc_tpl[new_k] = doc_tpl[k]
+            doc_tpl.delete k
+        end
+
+        doc_tpl
     end
 
 
