@@ -63,3 +63,5 @@ Options:
       --security-obj file        A file containing the JSON security object
                                  to add to each created DB.
                                  Defaults to none.
+
+      --recreate-dbs             If a DB already exists, it is deleted and created.

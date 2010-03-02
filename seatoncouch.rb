@@ -49,6 +49,7 @@ module SeatOnCouch
     DEFAULT_USER_PREFIX = "user"
     DEFAULT_DOC_TPL = 'default_doc.tpl'
     DEFAULT_SEC_OBJ = nil
+    DEFAULT_RECREATE_DBS = false
 
 
     def self.showhelp
@@ -111,6 +112,8 @@ Options:
                                  to add to each created DB.
                                  Defaults to none.
 
+      --recreate-dbs             If a DB already exists, it is deleted and created.
+
 _EOH_
 
         exit 0
@@ -134,6 +137,7 @@ _EOH_
         attr_accessor :user_prefix
         attr_accessor :doc_tpl
         attr_accessor :sec_obj
+        attr_accessor :recreate_dbs
     end
 
 
@@ -156,6 +160,11 @@ _EOH_
     def self.create_dbs
         1.upto($settings.dbs) do |i|
             db_name = "#{$settings.db_prefix}#{$settings.db_start_id + i - 1}"
+
+            if $settings.recreate_dbs
+                r = from_json(delete("/#{db_name}").body)
+                log_info("Deleted DB named `#{db_name}'") if r["ok"]
+            end
 
             r = from_json(put("/#{db_name}").body)
             if not r["ok"]
@@ -447,6 +456,7 @@ _EOH_
         $settings.user_prefix = DEFAULT_USER_PREFIX
         $settings.doc_tpl = DEFAULT_DOC_TPL
         $settings.sec_obj = DEFAULT_SEC_OBJ
+        $settings.recreate_dbs = DEFAULT_RECREATE_DBS
 
         opts = GetoptLong.new(
             ['--debug', GetoptLong::NO_ARGUMENT],
@@ -462,7 +472,8 @@ _EOH_
             ['--doc-prefix', GetoptLong::REQUIRED_ARGUMENT],
             ['--user-prefix', GetoptLong::REQUIRED_ARGUMENT],
             ['--doc-tpl', GetoptLong::REQUIRED_ARGUMENT],
-            ['--sec-obj', GetoptLong::REQUIRED_ARGUMENT]
+            ['--sec-obj', GetoptLong::REQUIRED_ARGUMENT],
+            ['--recreate-dbs', GetoptLong::NO_ARGUMENT]
         )
         opts.quiet = true
 
@@ -497,6 +508,8 @@ _EOH_
                         $settings.doc_tpl = arg
                     when '--sec-obj'
                         $settings.sec_obj = arg
+                    when '--recreate-dbs'
+                        $settings.recreate_dbs = true
                 end
             end
         rescue GetoptLong::Error
