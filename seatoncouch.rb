@@ -157,14 +157,17 @@ _EOH_
         1.upto($settings.dbs) do |i|
             db_name = "#{$settings.db_prefix}#{$settings.db_start_id + i - 1}"
 
-            delete "/#{db_name}"
-
             r = from_json(put("/#{db_name}").body)
             if not r["ok"]
-                log_error("Error creating DB `#{db_name}'", r)
-                next
+                if r["error"] == "file_exists"
+                    log_info "DB `#{db_name}' already exists"
+                else
+                    log_error("Error creating DB `#{db_name}'", r)
+                    next
+                end
+            else
+                log_info "Created DB named `#{db_name}'"
             end
-            log_info "Created DB named #{db_name}"
 
             create_docs db_name
 
