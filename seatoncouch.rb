@@ -251,6 +251,9 @@ _EOH_
 
         tpl = doc_tpl_gen_random_ints tpl
         tpl = doc_tpl_gen_random_strings tpl
+
+        tpl.gsub!(/\\#/, '#')
+
         from_json tpl
     end
 
