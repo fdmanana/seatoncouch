@@ -137,6 +137,22 @@ _EOH_
     end
 
 
+    class Streamer
+        def initialize(filename)
+            @f = File.open filename
+            @sz = File.size filename
+        end
+
+        def size
+            @sz
+        end
+
+        def read(len)
+            @f.read len
+        end
+    end
+
+
     def self.create_dbs
         1.upto($settings.dbs) do |i|
             db_name = "#{$settings.db_prefix}#{$settings.db_start_id + i - 1}"
@@ -170,14 +186,52 @@ _EOH_
         1.upto($settings.docs) do |i|
             doc_name = "#{$settings.doc_prefix}#{$settings.doc_start_id + i - 1}"
             uri = "/#{db_name}/#{doc_name}"
-            doc = from_json(get_doc_tpl($settings.doc_start_id + i - 1))
+            doc = get_doc_tpl($settings.doc_start_id + i - 1)
+            atts = parse_doc_atts doc
+            doc.delete "_attachments"
             req = put(uri, doc)
             r = from_json req.body
             if not r["ok"]
                 log_error("Error creating doc at #{uri}", r)
             else
                 log_info "Created doc at #{uri}"
+                upload_doc_atts(db_name, doc, r["rev"], atts)
             end
+        end
+    end
+
+
+    def self.upload_doc_atts(db_name, doc, doc_rev, atts)
+        log_info "atts: #{atts.inspect}"
+        doc_id = doc["_id"]
+        doc_path = "/#{db_name}/#{doc_id}"
+
+        atts.each do |att|
+            name = att["name"]
+            type = att["content_type"]
+            att_path = "#{doc_path}/#{name}"
+            res = nil
+
+            if att.has_key? "data"
+                res = put(att_path, att["data"], type, {"rev" => doc_rev})
+            else
+                stream = Streamer.new(att["file"]) rescue nil
+                if stream.nil?
+                    log_error "Couldn't open attachment file #{att['file']}"
+                    next
+                end
+
+                res = put_stream(att_path, stream, type, {"rev" => doc_rev})
+            end
+
+            r = from_json res.body
+            if not res.kind_of?(Net::HTTPCreated)
+                log_error("Error uploading attachment at #{att_path}", r)
+                next
+            end
+
+            log_info "Uploaded attachment #{att_path}"
+            doc_rev = r["rev"]
         end
     end
 
@@ -190,22 +244,19 @@ _EOH_
     def self.get_doc_tpl(doc_id_counter)
         tpl = $settings.doc_tpl.dup
 
-        tpl.gsub!(/([^\\])#\{doc_id_counter\}/, "\\1#{doc_id_counter}")
-        tpl.gsub!(/([^\\])#\{db_prefix\}/, "\\1#{$settings.db_prefix}")
-        tpl.gsub!(/([^\\])#\{doc_prefix\}/, "\\1#{$settings.doc_prefix}")
-        tpl.gsub!(/([^\\])#\{user_prefix\}/, "\\1#{$settings.user_prefix}")
+        tpl.gsub!(/([^\\]|^)#\{doc_id_counter\}/, "\\1#{doc_id_counter}")
+        tpl.gsub!(/([^\\]|^)#\{db_prefix\}/, "\\1#{$settings.db_prefix}")
+        tpl.gsub!(/([^\\]|^)#\{doc_prefix\}/, "\\1#{$settings.doc_prefix}")
+        tpl.gsub!(/([^\\]|^)#\{user_prefix\}/, "\\1#{$settings.user_prefix}")
 
         tpl = doc_tpl_gen_random_ints tpl
         tpl = doc_tpl_gen_random_strings tpl
-
-        # TODO: support attachments, by allowing #{file.filename} for e.g.
-
-        tpl
+        from_json tpl
     end
 
 
     def self.doc_tpl_gen_random_ints(tpl)
-        tpl.gsub!(/([^\\])#\{random_int\(\s*(\d+)\s*,\s*(\d+)\s*\)\}/) do |match|
+        tpl.gsub!(/([^\\]|^)#\{random_int\(\s*(\d+)\s*,\s*(\d+)\s*\)\}/) do |match|
             min = $2
             max = $3
             value = rand($3) + 1 + Integer($2)
@@ -216,12 +267,12 @@ _EOH_
 
 
     def self.doc_tpl_gen_random_strings(tpl)
-        tpl.gsub!(/([^\\])#\{random_string\}/) do |match|
+        tpl.gsub!(/([^\\]|^)#\{random_string\}/) do |match|
             length = rand(990) + 10
             str = gen_string length
             $1 + str
         end
-        tpl.gsub!(/([^\\])#\{random_string\(\s*(\d+)\s*\)\}/) do |match|
+        tpl.gsub!(/([^\\]|^)#\{random_string\(\s*(\d+)\s*\)\}/) do |match|
             length = Integer $2
             str = gen_string length
             $1 + str
@@ -243,13 +294,27 @@ _EOH_
     end
 
 
-    def self.put(path, data = '', query = {}, escape = true)
+    def self.put(path, data = '', content_type = "application/json", query = {}, escape = true)
         url = path + hash_to_query_string(query)
         url = URI.escape(url) if escape
         req = Net::HTTP::Put.new(url)
-        req["content-type"] = "application/json"
+        req["content-type"] = content_type
         req.body = to_json(data)
         request req
+    end
+
+
+    def self.put_stream(path, streamer, content_type = nil, query = {}, escape = true)
+        url = path + hash_to_query_string(query)
+        url = URI.escape(url) if escape
+        req = Net::HTTP::Put.new(url)
+        req["content-type"] = content_type if not content_type.nil?
+        req["transfer-encoding"] = "chunked"
+        #req.content_length = streamer.size
+        req.body_stream = streamer
+        Net::HTTP.new($settings.host, $settings.port).start do |http|
+            http.request req
+        end
     end
 
 
@@ -296,7 +361,7 @@ _EOH_
 
     def self.hash_to_query_string(query)
         str = ""
-        query.each_value do |key, value|
+        query.each_pair do |key, value|
             str += key + "=" + value + "&"
         end
         str = "?" + str if not str.empty?
@@ -424,6 +489,47 @@ _EOH_
 
         f.close
         $settings.doc_tpl = tpl
+    end
+
+
+    def self.parse_doc_atts(doc_tpl_hash)
+        result = []
+
+        if doc_tpl_hash.has_key?("_attachments")
+            atts = doc_tpl_hash["_attachments"]
+
+            if not atts.is_a? Hash
+                log_error "The _attachments attribute of the doc template must be an hash"
+                exit 1
+            end
+
+            atts.each_pair do |att_name, att_details|
+                if not att_details.is_a? Hash
+                    log_error "The _attachments/#{att_name} attribute of the doc template must be an hash"
+                    exit 1
+                end
+
+                att_entry = {}
+                att_entry["name"] = att_name
+                if att_details.has_key?("content_type")
+                    att_entry["content_type"] = att_details["content_type"]
+                end
+                if att_details.has_key?("data")
+                    if att_details["data"] =~ /^\s*(?:[^\\]|^)#\{file\((.*?)\)\}\s*$/
+                        att_entry["file"] = $1
+                    else
+                        att_entry["data"] = att_details["data"]
+                    end
+                else
+                    log_error "Missing data attribute for the attachment named `#{att_name}'"
+                    exit 1
+                end
+
+                result.push att_entry
+            end
+        end
+
+        result
     end
 
 
