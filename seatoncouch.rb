@@ -45,11 +45,11 @@ module SeatOnCouch
     DEFAULT_DOC_START_ID = 1
     DEFAULT_USER_START_ID = 1
     DEFAULT_DB_PREFIX = "testdb"
-    DEFAULT_DOC_PREFIX = "doc"
     DEFAULT_USER_PREFIX = "user"
     DEFAULT_DOC_TPL = 'default_doc.tpl'
     DEFAULT_SEC_OBJ = nil
     DEFAULT_RECREATE_DBS = false
+    DEFAULT_TIMES = false
 
 
     def self.showhelp
@@ -94,9 +94,6 @@ Options:
                                  increment of this initial ID.
                                  Defaults to `#{DEFAULT_DOC_START_ID}'
 
-      --doc-prefix string        A string prefix to prepend to each doc name.
-                                 Defaults to `#{DEFAULT_DOC_PREFIX}'
-
       --user-start-id number     The ID to assign to the first created user.
                                  Subsequent users will have an ID which is an
                                  increment of this initial ID.
@@ -113,6 +110,10 @@ Options:
                                  Defaults to none.
 
       --recreate-dbs             If a DB already exists, it is deleted and created.
+
+      --times                    If specified, CouchDB's response time for each
+                                 document and attachment PUT request will be reported
+                                 as well as average response times.
 
 _EOH_
 
@@ -133,12 +134,16 @@ _EOH_
         attr_accessor :doc_start_id
         attr_accessor :user_start_id
         attr_accessor :db_prefix
-        attr_accessor :doc_prefix
         attr_accessor :user_prefix
         attr_accessor :doc_tpl
         attr_accessor :sec_obj
         attr_accessor :recreate_dbs
+        attr_accessor :times
     end
+
+
+    @doc_times = []
+    @att_times = []
 
 
     class Streamer
@@ -196,17 +201,29 @@ _EOH_
 
     def self.create_docs(db_name)
         1.upto($settings.docs) do |i|
-            doc_name = "#{$settings.doc_prefix}#{$settings.doc_start_id + i - 1}"
-            uri = "/#{db_name}/#{doc_name}"
             doc = get_doc_tpl($settings.doc_start_id + i - 1)
+            if doc["_id"].nil?
+                doc_id = "#{$settings.doc_start_id + i - 1}"
+            else
+                doc_id = doc["_id"]
+            end
+            uri = "/#{db_name}/#{doc_id}"
             atts = parse_doc_atts doc
             doc.delete "_attachments"
+            t1 = Time.now
             req = put(uri, doc)
+            t2 = Time.now
             r = from_json req.body
             if not r["ok"]
                 log_error("Error creating doc at #{uri}", r)
             else
-                log_info "Created doc at #{uri}"
+                if $settings.times
+                    @doc_times.push(t2 - t1)
+                    log_info "Created doc at #{uri}  (response time: #{time_str(t2, t1)})"
+                else
+                    log_info "Created doc at #{uri}"
+                end
+                log_debug "Doc at URI #{uri} has now revision #{r['rev']}"
                 upload_doc_atts(db_name, doc, r["rev"], atts)
             end
         end
@@ -223,6 +240,7 @@ _EOH_
             att_path = "#{doc_path}/#{name}"
             res = nil
 
+            t1 = Time.now
             if att.has_key? "data"
                 res = put(att_path, att["data"], type, {"rev" => doc_rev})
             else
@@ -234,6 +252,7 @@ _EOH_
 
                 res = put_stream(att_path, stream, type, {"rev" => doc_rev})
             end
+            t2 = Time.now
 
             r = from_json res.body
             if not res.kind_of?(Net::HTTPCreated)
@@ -241,8 +260,15 @@ _EOH_
                 next
             end
 
-            log_info "Uploaded attachment #{att_path}"
+            if $settings.times
+                @att_times.push(t2 - t1)
+                log_info "Uploaded attachment #{att_path}  (response time: #{time_str(t2, t1)})"
+            else
+                log_info "Uploaded attachment #{att_path}"
+            end
+
             doc_rev = r["rev"]
+            log_debug "Doc at URI #{doc_path} has now revision #{r['rev']}"
         end
     end
 
@@ -257,7 +283,6 @@ _EOH_
 
         tpl.gsub!(/([^\\]|^)#\{doc_id_counter\}/, "\\1#{doc_id_counter}")
         tpl.gsub!(/([^\\]|^)#\{db_prefix\}/, "\\1#{$settings.db_prefix}")
-        tpl.gsub!(/([^\\]|^)#\{doc_prefix\}/, "\\1#{$settings.doc_prefix}")
         tpl.gsub!(/([^\\]|^)#\{user_prefix\}/, "\\1#{$settings.user_prefix}")
 
         tpl = doc_tpl_gen_random_ints tpl
@@ -452,11 +477,11 @@ _EOH_
         $settings.doc_start_id = DEFAULT_DOC_START_ID
         $settings.user_start_id = DEFAULT_USER_START_ID
         $settings.db_prefix = DEFAULT_DB_PREFIX
-        $settings.doc_prefix = DEFAULT_DOC_PREFIX
         $settings.user_prefix = DEFAULT_USER_PREFIX
         $settings.doc_tpl = DEFAULT_DOC_TPL
         $settings.sec_obj = DEFAULT_SEC_OBJ
         $settings.recreate_dbs = DEFAULT_RECREATE_DBS
+        $settings.times = DEFAULT_TIMES
 
         opts = GetoptLong.new(
             ['--debug', GetoptLong::NO_ARGUMENT],
@@ -469,11 +494,11 @@ _EOH_
             ['--doc-start-id', GetoptLong::REQUIRED_ARGUMENT],
             ['--user-start-id', GetoptLong::REQUIRED_ARGUMENT],
             ['--db-prefix', GetoptLong::REQUIRED_ARGUMENT],
-            ['--doc-prefix', GetoptLong::REQUIRED_ARGUMENT],
             ['--user-prefix', GetoptLong::REQUIRED_ARGUMENT],
             ['--doc-tpl', GetoptLong::REQUIRED_ARGUMENT],
             ['--sec-obj', GetoptLong::REQUIRED_ARGUMENT],
-            ['--recreate-dbs', GetoptLong::NO_ARGUMENT]
+            ['--recreate-dbs', GetoptLong::NO_ARGUMENT],
+            ['--times', GetoptLong::NO_ARGUMENT]
         )
         opts.quiet = true
 
@@ -500,8 +525,6 @@ _EOH_
                         $settings.user_start_id = Integer(arg) rescue DEFAULT_USER_START_ID
                     when '--db-prefix'
                         $settings.db_prefix = arg
-                    when '--doc-prefix'
-                        $settings.doc_prefix = arg
                     when '--user-prefix'
                         $settings.user_prefix = arg
                     when '--doc-tpl'
@@ -510,6 +533,8 @@ _EOH_
                         $settings.sec_obj = arg
                     when '--recreate-dbs'
                         $settings.recreate_dbs = true
+                    when '--times'
+                        $settings.times = true
                 end
             end
         rescue GetoptLong::Error
@@ -623,10 +648,41 @@ _EOH_
     end
 
 
+    def self.time_str(t2, t1 = 0)
+      diff = t2 - t1
+      if (diff - 0.01) < 0
+        "#{diff * 1000} milliseconds"
+      else
+        "#{diff} seconds"
+      end
+    end
+
+
     def self.run
         parse_command_line
         create_dbs
         create_users
+
+        if $settings.times
+            incAvgStep = lambda { |p, v, i| ((v - p) / (i + 1)) + p }
+
+            doc_times_avg = 0
+            @doc_times.each_index do |i|
+                doc_times_avg = incAvgStep.call(doc_times_avg, @doc_times[i], i)
+            end
+
+            att_times_avg = 0
+            @att_times.each_index do |i|
+                att_times_avg = incAvgStep.call(att_times_avg, @att_times[i], i)
+            end
+
+            print "\n"
+            log_info "CouchDB's average response time for storing a document:  #{time_str(doc_times_avg)}"
+
+            if @att_times.length > 0
+                log_info "CouchDB's average response time for storing an attachment:  #{time_str(att_times_avg)}"
+            end
+        end
     end
 
 
