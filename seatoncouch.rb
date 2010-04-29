@@ -32,6 +32,7 @@ require 'singleton'
 require 'net/http'
 require 'uri'
 require 'json'
+require 'thread'
 
 module SeatOnCouch
 
@@ -143,7 +144,9 @@ _EOH_
 
 
   @doc_times = []
+  @doc_times_mutex = Mutex.new
   @att_times = []
+  @att_times_mutex = Mutex.new
 
 
   class Streamer
@@ -163,43 +166,58 @@ _EOH_
 
 
   def self.create_dbs
+    threads = []
+
     1.upto($settings.dbs) do |i|
-      db_name = "#{$settings.db_prefix}#{$settings.db_start_id + i - 1}"
-
-      if $settings.recreate_dbs
-        r = from_json(delete("/#{db_name}").body)
-        log_info("Deleted DB named `#{db_name}'") if r["ok"]
+      t = Thread.new(i) do |db_num|
+         create_single_db db_num
       end
 
-      r = from_json(put("/#{db_name}").body)
-      if not r["ok"]
-        if r["error"] == "file_exists"
-          log_info "DB `#{db_name}' already exists"
-        else
-          log_error("Error creating DB `#{db_name}'", r)
-          next
-        end
-      else
-        log_info "Created DB named `#{db_name}'"
-      end
-
-      create_docs db_name
-
-      if not $settings.sec_obj.nil?
-        r = from_json(put("/#{db_name}/_security", $settings.sec_obj).body)
-        if not r["ok"]
-          log_error("Error setting the security object for DB `#{db_name}'", r)
-        else
-          log_info "Updated the security object for DB `#{db_name}'"
-        end
-      end
+      threads.push t
     end
 
-    create_users
+    threads.each do |t|
+      t.join
+    end
+  end
+
+
+  def self.create_single_db(db_num)
+    db_name = "#{$settings.db_prefix}#{$settings.db_start_id + db_num - 1}"
+
+    if $settings.recreate_dbs
+      r = from_json(delete("/#{db_name}").body)
+      log_info("Deleted DB named `#{db_name}'") if r["ok"]
+    end
+
+    r = from_json(put("/#{db_name}").body)
+    if not r["ok"]
+      if r["error"] == "file_exists"
+        log_info "DB `#{db_name}' already exists"
+      else
+        log_error("Error creating DB `#{db_name}'", r)
+        next
+      end
+    else
+      log_info "Created DB named `#{db_name}'"
+    end
+
+    create_docs db_name
+
+    if not $settings.sec_obj.nil?
+      r = from_json(put("/#{db_name}/_security", $settings.sec_obj).body)
+      if not r["ok"]
+        log_error("Error setting the security object for DB `#{db_name}'", r)
+      else
+        log_info "Updated the security object for DB `#{db_name}'"
+      end
+    end
   end
 
 
   def self.create_docs(db_name)
+    times = []
+
     1.upto($settings.docs) do |i|
 
       doc = get_doc_tpl($settings.doc_start_id + i - 1)
@@ -222,7 +240,7 @@ _EOH_
         log_error("Error creating doc at #{uri}", r)
       else
         if $settings.times
-          @doc_times.push(t2 - t1)
+          times.push(t2 - t1)
           log_info "Created doc at #{uri}  (response time: #{time_str(t2, t1)})"
         else
           log_info "Created doc at #{uri}"
@@ -231,12 +249,17 @@ _EOH_
         upload_doc_atts(db_name, doc, r["rev"], atts)
       end
     end
+
+    @doc_times_mutex.synchronize do
+      @doc_times.concat times
+    end
   end
 
 
   def self.upload_doc_atts(db_name, doc, doc_rev, atts)
     doc_id = doc["_id"]
     doc_path = "/#{db_name}/#{doc_id}"
+    times = []
 
     atts.each do |att|
       name = att["name"]
@@ -265,7 +288,7 @@ _EOH_
       end
 
       if $settings.times
-        @att_times.push(t2 - t1)
+        times.push(t2 - t1)
         log_info "Uploaded attachment #{att_path}  (response time: #{time_str(t2, t1)})"
       else
         log_info "Uploaded attachment #{att_path}"
@@ -273,6 +296,10 @@ _EOH_
 
       doc_rev = r["rev"]
       log_debug "Doc at URI #{doc_path} has now revision #{r['rev']}"
+    end
+
+    @att_times_mutex.synchronize do
+      @att_times.concat times
     end
   end
 
