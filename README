@@ -46,9 +46,6 @@ Options:
                                  increment of this initial ID.
                                  Defaults to `1'
 
-      --doc-prefix string        A string prefix to prepend to each doc name.
-                                 Defaults to `doc'
-
       --user-start-id number     The ID to assign to the first created user.
                                  Subsequent users will have an ID which is an
                                  increment of this initial ID.
@@ -60,8 +57,13 @@ Options:
       --doc-tpl file             The template to use for each doc.
                                  Defaults to `default_doc.tpl'
 
-      --security-obj file        A file containing the JSON security object
+      --sec-obj file             A file containing the JSON security object
                                  to add to each created DB.
                                  Defaults to none.
 
       --recreate-dbs             If a DB already exists, it is deleted and created.
+
+      --times                    If specified, CouchDB's response time for each
+                                 document and attachment PUT request will be reported
+                                 as well as average response times.
+
