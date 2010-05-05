@@ -29,6 +29,12 @@ Options:
       --docs count               Number of docs to create per DB.
                                  Defaults to `100'
 
+      --threads count            Number of threads to use for uploading
+                                 documents and attachments to each DB.
+                                 The document IDs range is partitionned
+                                 evenly between the threads.
+                                 Defaults to `1'
+
       --users count              Number of users to create.
                                  Defaults to `10'
 

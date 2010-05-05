@@ -51,6 +51,7 @@ module SeatOnCouch
   DEFAULT_SEC_OBJ = nil
   DEFAULT_RECREATE_DBS = false
   DEFAULT_TIMES = false
+  DEFAULT_THREADS = 1
 
 
   def self.showhelp
@@ -77,6 +78,12 @@ Options:
 
       --docs count               Number of docs to create per DB.
                                  Defaults to `#{DEFAULT_DOC_COUNT}'
+
+      --threads count            Number of threads to use for uploading
+                                 documents and attachments to each DB.
+                                 The document IDs range is partitionned
+                                 evenly between the threads.
+                                 Defaults to `#{DEFAULT_THREADS}'
 
       --users count              Number of users to create.
                                  Defaults to `#{DEFAULT_USER_COUNT}'
@@ -140,6 +147,7 @@ _EOH_
     attr_accessor :sec_obj
     attr_accessor :recreate_dbs
     attr_accessor :times
+    attr_accessor :threads
   end
 
 
@@ -166,18 +174,8 @@ _EOH_
 
 
   def self.create_dbs
-    threads = []
-
     1.upto($settings.dbs) do |i|
-      t = Thread.new(i) do |db_num|
-         create_single_db db_num
-      end
-
-      threads.push t
-    end
-
-    threads.each do |t|
-      t.join
+      create_single_db i
     end
   end
 
@@ -216,13 +214,62 @@ _EOH_
 
 
   def self.create_docs(db_name)
+    threads_doc_id_ranges = []
+    threads = []
+    start_doc_id = 1
+    end_doc_id = 0
+
+    if $settings.threads <= $settings.docs
+      1.upto($settings.threads) do |i|
+        start_doc_id = end_doc_id + 1
+        end_doc_id = start_doc_id + ($settings.docs / $settings.threads) - 1
+        threads_doc_id_ranges.push [start_doc_id, end_doc_id]
+      end
+    else
+      1.upto($settings.docs) do |i|
+        threads_doc_id_ranges.push [i, i]
+      end
+      end_doc_id = $settings.docs
+    end
+
+    if end_doc_id < $settings.docs
+      threads_doc_id_ranges.pop
+      threads_doc_id_ranges.push [start_doc_id, $settings.docs]
+    end
+
+    if $settings.debug
+      threads_doc_id_ranges.each do |doc_id_range|
+        log_debug "Doc ID range #{doc_id_range[0]}..#{doc_id_range[1]}"
+      end
+    end
+
+    thread_id = 1
+    threads_doc_id_ranges.each do |doc_id_range|
+
+      t = Thread.new(doc_id_range) do |id_range|
+        Thread.current[:id] = thread_id
+        create_docs_and_atts_for_db(db_name, *id_range)
+      end
+
+      threads.push t
+      thread_id += 1
+    end
+
+    threads.each do |t|
+      t.join
+    end
+  end
+
+
+  def self.create_docs_and_atts_for_db(db_name, first_doc_id, last_doc_id)
+    log_debug "Thread #{Thread.current[:id]} assigned for docs #{first_doc_id}..#{last_doc_id}"
     times = []
 
-    1.upto($settings.docs) do |i|
+    first_doc_id.upto(last_doc_id) do |i|
 
-      doc = get_doc_tpl($settings.doc_start_id + i - 1)
+      doc = get_doc_tpl(i)
       if doc["_id"].nil?
-        doc_id = "#{$settings.doc_start_id + i - 1}"
+        doc_id = "#{i}"
       else
         doc_id = doc["_id"]
       end
@@ -514,6 +561,7 @@ _EOH_
     $settings.sec_obj = DEFAULT_SEC_OBJ
     $settings.recreate_dbs = DEFAULT_RECREATE_DBS
     $settings.times = DEFAULT_TIMES
+    $settings.threads = DEFAULT_THREADS
 
     opts = GetoptLong.new(
                           ['--debug', GetoptLong::NO_ARGUMENT],
@@ -530,7 +578,8 @@ _EOH_
                           ['--doc-tpl', GetoptLong::REQUIRED_ARGUMENT],
                           ['--sec-obj', GetoptLong::REQUIRED_ARGUMENT],
                           ['--recreate-dbs', GetoptLong::NO_ARGUMENT],
-                          ['--times', GetoptLong::NO_ARGUMENT]
+                          ['--times', GetoptLong::NO_ARGUMENT],
+                          ['--threads', GetoptLong::REQUIRED_ARGUMENT]
                           )
     opts.quiet = true
 
@@ -567,6 +616,8 @@ _EOH_
           $settings.recreate_dbs = true
         when '--times'
           $settings.times = true
+        when '--threads'
+          $settings.threads = Integer(arg) rescue DEFAULT_THREADS
         end
       end
     rescue GetoptLong::Error
