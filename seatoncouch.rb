@@ -123,6 +123,10 @@ Options:
                                  document and attachment PUT request will be reported
                                  as well as average response times.
 
+      --http-basic-username      Username for HTTP Basic Authentication.
+
+      --http-basic-password      Password for HTTP Basic Authentication.
+
 _EOH_
 
     exit 0
@@ -148,6 +152,8 @@ _EOH_
     attr_accessor :recreate_dbs
     attr_accessor :times
     attr_accessor :threads
+    attr_accessor :http_basic_user
+    attr_accessor :http_basic_passwd
   end
 
 
@@ -483,6 +489,9 @@ _EOH_
 
 
   def self.request(req)
+    if not $settings.http_basic_user.nil?
+      req.basic_auth($settings.http_basic_user, $settings.http_basic_passwd)
+    end
     res = Net::HTTP.start($settings.host, $settings.port) do |http|
       http.request(req)
     end
@@ -562,6 +571,8 @@ _EOH_
     $settings.recreate_dbs = DEFAULT_RECREATE_DBS
     $settings.times = DEFAULT_TIMES
     $settings.threads = DEFAULT_THREADS
+    $settings.http_basic_user = nil
+    $settings.http_basic_passwd = nil
 
     opts = GetoptLong.new(
                           ['--debug', GetoptLong::NO_ARGUMENT],
@@ -579,7 +590,9 @@ _EOH_
                           ['--sec-obj', GetoptLong::REQUIRED_ARGUMENT],
                           ['--recreate-dbs', GetoptLong::NO_ARGUMENT],
                           ['--times', GetoptLong::NO_ARGUMENT],
-                          ['--threads', GetoptLong::REQUIRED_ARGUMENT]
+                          ['--threads', GetoptLong::REQUIRED_ARGUMENT],
+                          ['--http-basic-username', GetoptLong::REQUIRED_ARGUMENT],
+                          ['--http-basic-password', GetoptLong::REQUIRED_ARGUMENT]
                           )
     opts.quiet = true
 
@@ -618,10 +631,19 @@ _EOH_
           $settings.times = true
         when '--threads'
           $settings.threads = Integer(arg) rescue DEFAULT_THREADS
+        when '--http-basic-username'
+          $settings.http_basic_user = arg
+        when '--http-basic-password'
+          $settings.http_basic_passwd = arg
         end
       end
     rescue GetoptLong::Error
       log_error "#{opts.error_message}"
+      exit 1
+    end
+
+    if $settings.http_basic_passwd.nil? and (not $settings.http_basic_user.nil?)
+      log_error "HTTP basic password missing"
       exit 1
     end
 
