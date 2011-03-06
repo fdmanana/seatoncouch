@@ -274,7 +274,7 @@ _EOH_
 
     first_doc_id.upto(last_doc_id) do |i|
 
-      id_counter = i + $settings.doc_start_id
+      id_counter = i + $settings.doc_start_id - 1
       doc = get_doc_tpl(id_counter)
       if doc["_id"].nil?
         doc_id = UUID.create_random.to_s
