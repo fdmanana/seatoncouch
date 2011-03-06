@@ -33,6 +33,7 @@ require 'net/http'
 require 'uri'
 require 'json'
 require 'thread'
+require 'uuid'
 
 module SeatOnCouch
 
@@ -276,7 +277,7 @@ _EOH_
       id_counter = i + $settings.doc_start_id
       doc = get_doc_tpl(id_counter)
       if doc["_id"].nil?
-        doc_id = "#{id_counter}"
+        doc_id = UUID.create_random.to_s
       else
         doc_id = doc["_id"]
       end
