@@ -273,9 +273,10 @@ _EOH_
 
     first_doc_id.upto(last_doc_id) do |i|
 
-      doc = get_doc_tpl(i)
+      id_counter = i + $settings.doc_start_id
+      doc = get_doc_tpl(id_counter)
       if doc["_id"].nil?
-        doc_id = "#{i}"
+        doc_id = "#{id_counter}"
       else
         doc_id = doc["_id"]
       end
