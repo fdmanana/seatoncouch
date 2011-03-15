@@ -664,7 +664,7 @@ _EOH_
 
     tpl = ''
     f.each_line do |line|
-      next if line =~ /^\s*#/
+      next if line =~ /^#/
       next if line =~ /^\s*$/
       tpl += line
     end
