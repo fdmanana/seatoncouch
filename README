@@ -29,6 +29,11 @@ Options:
       --docs count               Number of docs to create per DB.
                                  Defaults to `100'
 
+      --revs-per-doc count       The number of revisions each document will
+                                 have. Each revision will have exactly the
+                                 same data.
+                                 Defaults to `1'
+
       --threads count            Number of threads to use for uploading
                                  documents and attachments to each DB.
                                  The document IDs range is partitionned

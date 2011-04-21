@@ -42,6 +42,7 @@ module SeatOnCouch
   DEFAULT_PORT = "5984"
   DEFAULT_DB_COUNT = 10
   DEFAULT_DOC_COUNT = 100
+  DEFAULT_DOC_REVS_COUNT = 1
   DEFAULT_USER_COUNT = 10
   DEFAULT_DB_START_ID = 1
   DEFAULT_DOC_START_ID = 1
@@ -79,6 +80,11 @@ Options:
 
       --docs count               Number of docs to create per DB.
                                  Defaults to `#{DEFAULT_DOC_COUNT}'
+
+      --revs-per-doc count       The number of revisions each document will
+                                 have. Each revision will have exactly the
+                                 same data.
+                                 Defaults to `#{DEFAULT_DOC_REVS_COUNT}'
 
       --threads count            Number of threads to use for uploading
                                  documents and attachments to each DB.
@@ -142,6 +148,7 @@ _EOH_
     attr_accessor :port
     attr_accessor :dbs
     attr_accessor :docs
+    attr_accessor :doc_revs
     attr_accessor :users
     attr_accessor :db_start_id
     attr_accessor :doc_start_id
@@ -270,14 +277,13 @@ _EOH_
 
   def self.create_docs_and_atts_for_db(db_name, first_doc_id, last_doc_id)
     log_debug "Thread #{Thread.current[:id]} assigned for docs #{first_doc_id}..#{last_doc_id}"
-    times = []
 
     first_doc_id.upto(last_doc_id) do |i|
 
       id_counter = i + $settings.doc_start_id - 1
       doc = get_doc_tpl(id_counter)
       if doc["_id"].nil?
-        doc_id = UUID.create_random.to_s
+        doc["_id"] = doc_id = UUID.create_random.to_s
       else
         doc_id = doc["_id"]
       end
@@ -286,13 +292,31 @@ _EOH_
       atts = parse_doc_atts doc
       doc.delete "_attachments"
 
+      doc_put_loop(doc, db_name, $settings.doc_revs)
+    end
+  end
+
+
+  def self.doc_put_loop(doc, db_name, num_revs)
+    times = []
+    doc_rev = nil
+    atts = parse_doc_atts doc
+    doc.delete "_attachments"
+
+    1.upto(num_revs) do |i|
+      uri = "/#{db_name}/#{doc['_id']}"
+      if not doc_rev.nil?
+         uri += ("?rev=" + doc_rev)
+         doc["_rev"] = doc_rev
+      end
+
       t1 = Time.now
       req = put(uri, doc)
       t2 = Time.now
 
       r = from_json req.body
       if not r["ok"]
-        log_error("Error creating doc at #{uri}", r)
+        log_error("Error creating doc at #{uri} (revision number #{i})", r)
       else
         if $settings.times
           times.push(t2 - t1)
@@ -300,8 +324,8 @@ _EOH_
         else
           log_info "Created doc at #{uri}"
         end
-        log_debug "Doc at URI #{uri} has now revision #{r['rev']}"
-        upload_doc_atts(db_name, doc, r["rev"], atts)
+        doc_rev = r["rev"]
+        upload_doc_atts(db_name, doc, doc_rev, atts)
       end
     end
 
@@ -562,6 +586,7 @@ _EOH_
     $settings.port = DEFAULT_PORT
     $settings.dbs = DEFAULT_DB_COUNT
     $settings.docs = DEFAULT_DOC_COUNT
+    $settings.doc_revs = DEFAULT_DOC_REVS_COUNT
     $settings.users = DEFAULT_USER_COUNT
     $settings.db_start_id = DEFAULT_DB_START_ID
     $settings.doc_start_id = DEFAULT_DOC_START_ID
@@ -582,6 +607,7 @@ _EOH_
                           ['--port', GetoptLong::REQUIRED_ARGUMENT],
                           ['--dbs', GetoptLong::REQUIRED_ARGUMENT],
                           ['--docs', GetoptLong::REQUIRED_ARGUMENT],
+                          ['--revs-per-doc', GetoptLong::REQUIRED_ARGUMENT],
                           ['--users', GetoptLong::REQUIRED_ARGUMENT],
                           ['--db-start-id', GetoptLong::REQUIRED_ARGUMENT],
                           ['--doc-start-id', GetoptLong::REQUIRED_ARGUMENT],
@@ -611,6 +637,8 @@ _EOH_
           $settings.dbs = Integer(arg) rescue DEFAULT_DB_COUNT
         when '--docs'
           $settings.docs = Integer(arg) rescue DEFAULT_DOC_COUNT
+        when '--revs-per-doc'
+          $settings.doc_revs = Integer(arg) rescue DEFAULT_DOC_REVS_COUNT
         when '--users'
           $settings.users = Integer(arg) rescue DEFAULT_USER_COUNT
         when '--db-start-id'
