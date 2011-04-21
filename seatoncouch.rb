@@ -518,8 +518,16 @@ _EOH_
     if not $settings.http_basic_user.nil?
       req.basic_auth($settings.http_basic_user, $settings.http_basic_passwd)
     end
-    res = Net::HTTP.start($settings.host, $settings.port) do |http|
-      http.request(req)
+    if Thread.current[:http_conn].nil?
+      Thread.current[:http_conn] = Net::HTTP.start($settings.host, $settings.port)
+    end
+
+    res = nil
+    begin
+      res = Thread.current[:http_conn].request(req)
+    rescue Exception
+      Thread.current[:http_conn] = Net::HTTP.start($settings.host, $settings.port)
+      res = Thread.current[:http_conn].request(req)
     end
     # if (not res.kind_of?(Net::HTTPSuccess))
     #     handle_error(req, res)
