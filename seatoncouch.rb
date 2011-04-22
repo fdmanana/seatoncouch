@@ -288,10 +288,6 @@ _EOH_
         doc_id = doc["_id"]
       end
 
-      uri = "/#{db_name}/#{doc_id}"
-      atts = parse_doc_atts doc
-      doc.delete "_attachments"
-
       doc_put_loop(doc, db_name, $settings.doc_revs)
     end
   end
