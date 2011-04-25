@@ -26,6 +26,11 @@ Options:
       --dbs count                Number of DBs to create.
                                  Defaults to `10'
 
+      --bulk-batch doc_count     When uploading documents to CouchDB, use
+                                 the _bulk_docs API with doc_count documents
+                                 for each POST request to db/_bulk_docs.
+                                 By default the _bulk_docs API is not used.
+
       --docs count               Number of docs to create per DB.
                                  Defaults to `100'
 

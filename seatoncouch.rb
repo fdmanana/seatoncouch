@@ -34,6 +34,7 @@ require 'uri'
 require 'json'
 require 'thread'
 require 'uuid'
+require 'base64'
 
 module SeatOnCouch
 
@@ -42,6 +43,7 @@ module SeatOnCouch
   DEFAULT_PORT = "5984"
   DEFAULT_DB_COUNT = 10
   DEFAULT_DOC_COUNT = 100
+  DEFAULT_DOC_BATCH_SIZE = 1
   DEFAULT_DOC_REVS_COUNT = 1
   DEFAULT_USER_COUNT = 10
   DEFAULT_DB_START_ID = 1
@@ -80,6 +82,11 @@ Options:
 
       --docs count               Number of docs to create per DB.
                                  Defaults to `#{DEFAULT_DOC_COUNT}'
+
+      --bulk-batch doc_count     When uploading documents to CouchDB, use
+                                 the _bulk_docs API with doc_count documents
+                                 for each POST request to db/_bulk_docs.
+                                 By default the _bulk_docs API is not used.
 
       --revs-per-doc count       The number of revisions each document will
                                  have. Each revision will have exactly the
@@ -148,6 +155,7 @@ _EOH_
     attr_accessor :port
     attr_accessor :dbs
     attr_accessor :docs
+    attr_accessor :doc_batch_size
     attr_accessor :doc_revs
     attr_accessor :users
     attr_accessor :db_start_id
@@ -278,17 +286,80 @@ _EOH_
   def self.create_docs_and_atts_for_db(db_name, first_doc_id, last_doc_id)
     log_debug "Thread #{Thread.current[:id]} assigned for docs #{first_doc_id}..#{last_doc_id}"
 
-    first_doc_id.upto(last_doc_id) do |i|
-
-      id_counter = i + $settings.doc_start_id - 1
-      doc = get_doc_tpl(id_counter)
-      if doc["_id"].nil?
-        doc["_id"] = doc_id = UUID.create_random.to_s
-      else
-        doc_id = doc["_id"]
+    if $settings.doc_batch_size > 1
+      send_bulk_docs(db_name, first_doc_id, last_doc_id)
+    else
+      first_doc_id.upto(last_doc_id) do |i|
+        id_counter = i + $settings.doc_start_id - 1
+        doc = get_next_doc id_counter
+        doc_put_loop(doc, db_name, $settings.doc_revs)
       end
+    end
+  end
 
-      doc_put_loop(doc, db_name, $settings.doc_revs)
+
+  def self.get_next_doc(id_counter)
+    doc = get_doc_tpl(id_counter)
+    if doc["_id"].nil?
+      doc["_id"] = UUID.create_random.to_s
+    end
+    return doc
+  end
+
+
+  def self.send_bulk_docs(db_name, first_doc_id, last_doc_id)
+    docs = []
+    doc_revs = {}
+    times = []
+
+    1.upto($settings.doc_revs) do |foo|
+      first_doc_id.upto(last_doc_id) do |i|
+        id_counter = i + $settings.doc_start_id - 1
+        doc = get_next_doc id_counter
+        atts = parse_doc_atts(doc, true)
+        doc.delete "_attachments"
+        if atts.length > 0
+          doc["_attachments"] = {}
+          atts.each do |a|
+            doc["_attachments"][a["name"]] = {
+              :data => a["data"]
+            }
+            if not a["content_type"].nil?
+              doc["_attachments"][a["name"]]["content_type"] = a["content_type"]
+            end
+          end
+        end
+
+        if not doc_revs[doc["_id"]].nil?
+          doc["_rev"] = doc_revs[doc["_id"]]
+        end
+        docs.push doc
+        if (docs.length >= 0 and docs.length >= $settings.doc_batch_size) or
+            (docs.length >= 0 and i == last_doc_id)
+          t1 = Time.now
+          req = post("/" + db_name + "/_bulk_docs", {:docs => docs})
+          t2 = Time.now
+          times.push(t2 - t1)
+          r = from_json req.body
+          if not r.is_a? Array
+            log_error "_bulk_docs did not return an array"
+          else
+            r.each do |doc_r|
+              if doc_r["ok"]
+                doc_revs[doc_r["id"]] = doc_r["rev"]
+              else
+                log_error "Error uploading document #{doc_r['id']} via _bulk_docs (revision number #{foo})"
+              end
+            end
+            log_info "Uploaded #{docs.length} documents via _bulk_docs"
+          end
+          docs = []
+        end
+      end
+    end
+
+    @doc_times_mutex.synchronize do
+      @doc_times.concat times
     end
   end
 
@@ -482,6 +553,16 @@ _EOH_
   end
 
 
+  def self.post(path, data = '', content_type = "application/json", query = {}, escape = true)
+    url = path + hash_to_query_string(query)
+    url = URI.escape(url) if escape
+    req = Net::HTTP::Post.new(url)
+    req["content-type"] = content_type
+    req.body = to_json(data)
+    request req
+  end
+
+
   def self.put_stream(path, streamer, content_type = nil, query = {}, escape = true)
     url = path + hash_to_query_string(query)
     url = URI.escape(url) if escape
@@ -590,6 +671,7 @@ _EOH_
     $settings.port = DEFAULT_PORT
     $settings.dbs = DEFAULT_DB_COUNT
     $settings.docs = DEFAULT_DOC_COUNT
+    $settings.doc_batch_size = DEFAULT_DOC_BATCH_SIZE
     $settings.doc_revs = DEFAULT_DOC_REVS_COUNT
     $settings.users = DEFAULT_USER_COUNT
     $settings.db_start_id = DEFAULT_DB_START_ID
@@ -611,6 +693,7 @@ _EOH_
                           ['--port', GetoptLong::REQUIRED_ARGUMENT],
                           ['--dbs', GetoptLong::REQUIRED_ARGUMENT],
                           ['--docs', GetoptLong::REQUIRED_ARGUMENT],
+                          ['--bulk-batch', GetoptLong::REQUIRED_ARGUMENT],
                           ['--revs-per-doc', GetoptLong::REQUIRED_ARGUMENT],
                           ['--users', GetoptLong::REQUIRED_ARGUMENT],
                           ['--db-start-id', GetoptLong::REQUIRED_ARGUMENT],
@@ -641,6 +724,8 @@ _EOH_
           $settings.dbs = Integer(arg) rescue DEFAULT_DB_COUNT
         when '--docs'
           $settings.docs = Integer(arg) rescue DEFAULT_DOC_COUNT
+        when '--bulk-batch'
+          $settings.doc_batch_size = Integer(arg) rescue DEFAULT_DOC_BATCH_SIZE
         when '--revs-per-doc'
           $settings.doc_revs = Integer(arg) rescue DEFAULT_DOC_REVS_COUNT
         when '--users'
@@ -706,7 +791,7 @@ _EOH_
   end
 
 
-  def self.parse_doc_atts(doc_tpl_hash)
+  def self.parse_doc_atts(doc_tpl_hash, inline_only = false)
     result = []
 
     if doc_tpl_hash.has_key?("_attachments")
@@ -730,9 +815,18 @@ _EOH_
         end
         if att_details.has_key?("data")
           if att_details["data"] =~ /^\s*(?:[^\\]|^)#\{file\((.*?)\)\}\s*$/
-            att_entry["file"] = $1
+            if inline_only
+              data = ''
+              f = File.open($1, "r")
+              f.each_line do |line|
+                data += line
+              end
+              att_entry["data"] = Base64.encode64(data).gsub("\n", "")
+            else
+              att_entry["file"] = $1
+            end
           else
-            att_entry["data"] = att_details["data"]
+            att_entry["data"] = Base64.encode64(att_details["data"]).gsub("\n", "")
           end
         else
           log_error "Missing data attribute for the attachment named `#{att_name}'"
