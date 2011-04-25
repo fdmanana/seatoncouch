@@ -41,7 +41,7 @@ module SeatOnCouch
   DEFAULT_DEBUG = false
   DEFAULT_HOST = "localhost"
   DEFAULT_PORT = "5984"
-  DEFAULT_DB_COUNT = 10
+  DEFAULT_DB_COUNT = 1
   DEFAULT_DOC_COUNT = 100
   DEFAULT_DOC_BATCH_SIZE = 1
   DEFAULT_DOC_REVS_COUNT = 1
@@ -196,14 +196,22 @@ _EOH_
 
 
   def self.create_dbs
-    1.upto($settings.dbs) do |i|
-      create_single_db i
+    if $settings.dbs == 1
+      create_single_db nil
+    else
+      1.upto($settings.dbs) do |i|
+        create_single_db i
+      end
     end
   end
 
 
   def self.create_single_db(db_num)
-    db_name = "#{$settings.db_prefix}#{$settings.db_start_id + db_num - 1}"
+    if db_num.nil?
+      db_name = "#{$settings.db_prefix}"
+    else
+      db_name = "#{$settings.db_prefix}#{$settings.db_start_id + db_num - 1}"
+    end
 
     if $settings.recreate_dbs
       r = from_json(delete("/#{db_name}").body)
