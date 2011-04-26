@@ -64,8 +64,7 @@ module SeatOnCouch
     puts <<_EOH_
 Usage:  #{File.basename __FILE__} [OPTION]*
 
-  Tool to populate a CouchDB instance with several DBs, docs and users.
-  Used for development purposes and measuring CouchDB performance.
+  Templating tool to populate a CouchDB instance with data.
 
 Options:
 
