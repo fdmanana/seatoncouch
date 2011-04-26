@@ -554,7 +554,7 @@ _EOH_
   def self.doc_tpl_do_picks(tpl)
     tpl.gsub!(/#\{pick\((.*?)\)\}/) do |match|
       tokens = $1
-      tokens = tokens.split ","
+      tokens = tokens.split(/\s*,\s*/)
       srand()
       tokens[rand(tokens.length)]
     end
