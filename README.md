@@ -1,6 +1,6 @@
 # seatoncouch
 
-A templating utility for populating a CouchDB instance with test data.
+A templating utility for populating a CouchDB instance with data.
 
 
 # template macros
@@ -12,9 +12,12 @@ Example document template:
 <pre>
 {
   "type": "#{pick(human,orc,elf,dwarf)}",
+# comment, this will be ignored
   "category": "#{pick(warrior,assassin,thief,paladin,priest,wizard)}",
   "ratio": #{random_int(0, 1)}.#{random_int(0, 9)},
   "level": #{random_int(1, 20)},
+# randomly generated base64 string with 5 to 50 characters
+  "variable_length_string": "#{random_string(#{random_int(5, 50)})}",
   "integers": [
       #{random_int(0, 100000)}, #{random_int(0, 100000)},
       #{random_int(0, 100000)}, #{random_int(0, 100000)},
@@ -92,7 +95,7 @@ Options:
                                  same data.
                                  Defaults to `1'
 
-     --conflicts-per-doc count   The number of conflicting revisions (leafs)
+      --conflicts-per-doc count  The number of conflicting revisions (leafs)
                                  to create for each inserted document.
                                  By default no conflicts version are created.
                                  Note: this option only works if the bulk batch
