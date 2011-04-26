@@ -39,6 +39,12 @@ Options:
                                  same data.
                                  Defaults to `1'
 
+     --conflicts-per-doc count   The number of conflicting revisions (leafs)
+                                 to create for each inserted document.
+                                 By default no conflicts version are created.
+                                 Note: this option only works if the bulk batch
+                                       option is used as well.
+
       --threads count            Number of threads to use for uploading
                                  documents and attachments to each DB.
                                  The document IDs range is partitionned

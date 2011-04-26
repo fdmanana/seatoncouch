@@ -35,6 +35,7 @@ require 'json'
 require 'thread'
 require 'uuid'
 require 'base64'
+require 'digest/md5'
 
 module SeatOnCouch
 
@@ -45,6 +46,7 @@ module SeatOnCouch
   DEFAULT_DOC_COUNT = 100
   DEFAULT_DOC_BATCH_SIZE = 1
   DEFAULT_DOC_REVS_COUNT = 1
+  DEFAULT_DOC_CONFLICTS_COUNT = 0
   DEFAULT_USER_COUNT = 10
   DEFAULT_DB_START_ID = 1
   DEFAULT_DOC_START_ID = 1
@@ -92,6 +94,12 @@ Options:
                                  have. Each revision will have exactly the
                                  same data.
                                  Defaults to `#{DEFAULT_DOC_REVS_COUNT}'
+
+      --conflicts-per-doc count  The number of conflicting revisions (leafs)
+                                 to create for each inserted document.
+                                 By default no conflicts version are created.
+                                 Note: this option only works if the bulk batch
+                                       option is used as well.
 
       --threads count            Number of threads to use for uploading
                                  documents and attachments to each DB.
@@ -157,6 +165,7 @@ _EOH_
     attr_accessor :docs
     attr_accessor :doc_batch_size
     attr_accessor :doc_revs
+    attr_accessor :conflicts_per_doc
     attr_accessor :users
     attr_accessor :db_start_id
     attr_accessor :doc_start_id
@@ -320,7 +329,7 @@ _EOH_
     doc_revs = {}
     times = []
 
-    1.upto($settings.doc_revs) do |foo|
+    1.upto($settings.doc_revs) do |rev_iter|
       first_doc_id.upto(last_doc_id) do |i|
         id_counter = i + $settings.doc_start_id - 1
         doc = get_next_doc id_counter
@@ -342,6 +351,7 @@ _EOH_
           doc["_rev"] = doc_revs[doc["_id"]]
         end
         docs.push doc
+
         if (docs.length >= 0 and docs.length >= $settings.doc_batch_size) or
             (docs.length >= 0 and i == last_doc_id)
           t1 = Time.now
@@ -356,10 +366,36 @@ _EOH_
               if doc_r["ok"]
                 doc_revs[doc_r["id"]] = doc_r["rev"]
               else
-                log_error "Error uploading document #{doc_r['id']} via _bulk_docs (revision number #{foo})"
+                log_error "Error uploading document #{doc_r['id']} via _bulk_docs (revision number #{rev_iter})"
               end
             end
             log_info "Uploaded #{docs.length} documents via _bulk_docs"
+          end
+          if (rev_iter == $settings.doc_revs) and ($settings.conflicts_per_doc > 0)
+            1.upto($settings.conflicts_per_doc) do |conflict_num|
+              docs.each do |d|
+                if doc_revs[d["_id"]]
+                  pos = doc_revs[d["_id"]].split("-")[0]
+                  md5 = Digest::MD5.hexdigest(UUID.create_random.to_s)
+                  d["_rev"] = pos + "-" + md5
+                end
+              end
+              t1 = Time.now
+              req = post("/" + db_name + "/_bulk_docs", {:new_edits => false, :docs => docs})
+              t2 = Time.now
+              times.push(t2 - t1)
+              r = from_json req.body
+              if not r.is_a? Array
+                log_error "_bulk_docs did not return an array"
+              else
+                r.each do |doc_r|
+                  if not doc_r["ok"]
+                    log_error "Error uploading document #{doc_r['id']} via _bulk_docs (conflict number #{conflict_num})"
+                  end
+                end
+                log_info "Uploaded #{docs.length} conflict documents via _bulk_docs"
+              end
+            end
           end
           docs = []
         end
@@ -681,6 +717,7 @@ _EOH_
     $settings.docs = DEFAULT_DOC_COUNT
     $settings.doc_batch_size = DEFAULT_DOC_BATCH_SIZE
     $settings.doc_revs = DEFAULT_DOC_REVS_COUNT
+    $settings.conflicts_per_doc = DEFAULT_DOC_CONFLICTS_COUNT
     $settings.users = DEFAULT_USER_COUNT
     $settings.db_start_id = DEFAULT_DB_START_ID
     $settings.doc_start_id = DEFAULT_DOC_START_ID
@@ -703,6 +740,7 @@ _EOH_
                           ['--docs', GetoptLong::REQUIRED_ARGUMENT],
                           ['--bulk-batch', GetoptLong::REQUIRED_ARGUMENT],
                           ['--revs-per-doc', GetoptLong::REQUIRED_ARGUMENT],
+                          ['--conflicts-per-doc', GetoptLong::REQUIRED_ARGUMENT],
                           ['--users', GetoptLong::REQUIRED_ARGUMENT],
                           ['--db-start-id', GetoptLong::REQUIRED_ARGUMENT],
                           ['--doc-start-id', GetoptLong::REQUIRED_ARGUMENT],
@@ -736,6 +774,8 @@ _EOH_
           $settings.doc_batch_size = Integer(arg) rescue DEFAULT_DOC_BATCH_SIZE
         when '--revs-per-doc'
           $settings.doc_revs = Integer(arg) rescue DEFAULT_DOC_REVS_COUNT
+        when '--conflicts-per-doc'
+          $settings.conflicts_per_doc = Integer(arg) rescue DEFAULT_DOC_CONFLICTS_COUNT
         when '--users'
           $settings.users = Integer(arg) rescue DEFAULT_USER_COUNT
         when '--db-start-id'
