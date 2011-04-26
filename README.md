@@ -1,10 +1,63 @@
-An utility for populating a CouchDB instance with test data.
+# seatoncouch
 
-Used for development purposes and for measuring CouchDB performance.
-The docs to add to CouchDB databases are specified using templates.
+A templating utility for populating a CouchDB instance with test data.
 
 
-$./seatoncouch.rb --help
+# template macros
+
+Template macros are have the form:   #{macro_name(param1,param2,param3,...)}
+
+Example document template:
+
+<pre>
+{
+  "type": "#{pick(human,orc,elf,dwarf)}",
+  "category": "#{pick(warrior,assassin,thief,paladin,priest,wizard)}",
+  "ratio": #{random_int(0, 1)}.#{random_int(0, 9)},
+  "level": #{random_int(1, 20)},
+  "integers": [
+      #{random_int(0, 100000)}, #{random_int(0, 100000)},
+      #{random_int(0, 100000)}, #{random_int(0, 100000)},
+      #{random_int(0, 100000)}, #{random_int(0, 100000)}
+  ],
+  "nested": {
+      "coords": [
+          {
+              "x": #{random_int(0, 200000)}.#{random_int(0, 100)},
+              "y": #{random_int(0, 200000)}.#{random_int(0, 100)}
+          },
+          {
+              "x": #{random_int(0, 200000)}.#{random_int(0, 100)},
+              "y": #{random_int(0, 200000)}.#{random_int(0, 100)}
+          }
+      ],
+      "string1": "#{random_string(23)}",
+      "string2": "#{random_string(12)}",
+      "string3": "#{random_string(18)}",
+      "dict": {
+          "#{random_string(8)}": #{random_int(0, 20000)},
+          "#{random_string(8)}": #{random_int(0, 70)},
+          "#{random_string(8)}": #{random_int(0, 200)},
+          "#{random_string(8)}": #{random_int(0, 10000)}
+      }
+  }
+  "_attachments": {
+    "lorem.txt": {
+      "content_type": "text/plain",
+      "data": "#{file(lorem2.txt)}"
+    },
+    "#{if(#{random_int(1, 2)} == 1)}hello.md": {
+      "content_type": "application/markdown",
+      "data": "I will be base64 encoded, and have 50% of chances to be in a real document"
+    }
+  }
+</pre>
+
+
+# usage
+
+<pre>
+$ ./seatoncouch.rb --help
 
 Usage:  seatoncouch.rb [OPTION]*
 
@@ -92,3 +145,4 @@ Options:
       --http-basic-username      Username for HTTP Basic Authentication.
 
       --http-basic-password      Password for HTTP Basic Authentication.
+</pre>
