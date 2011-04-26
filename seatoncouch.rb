@@ -508,6 +508,7 @@ _EOH_
 
     tpl = doc_tpl_gen_random_ints tpl
     tpl = doc_tpl_gen_random_strings tpl
+    tpl = doc_tpl_do_picks tpl
 
     tpl.gsub!(/\\#/, '#')
 
@@ -545,6 +546,19 @@ _EOH_
     end
 
     doc_tpl
+  end
+
+
+  # #{pick(ValueList)} value list is a comma separated list of values - one of them is picked
+  # randomly and it replaces this pattern
+  def self.doc_tpl_do_picks(tpl)
+    tpl.gsub!(/#\{pick\((.*?)\)\}/) do |match|
+      tokens = $1
+      tokens = tokens.split ","
+      srand()
+      tokens[rand(tokens.length)]
+    end
+    tpl
   end
 
 

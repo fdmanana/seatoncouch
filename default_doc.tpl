@@ -5,6 +5,7 @@
   "name": "#{random_string}",
   "address": "#{random_string(200)}",
   "age": #{random_int(1, 100)},
+  "race": "#{pick(human,orc,elf,dwarf)}",
 
 # An attribute name may begin with a conditional statement.
 # If the conditional statement evaluates to true, the attribute is added
