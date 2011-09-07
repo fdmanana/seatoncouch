@@ -30,7 +30,7 @@ $LOAD_PATH.push('json/lib')
 require 'getoptlong'
 require 'singleton'
 require 'net/http'
-require 'uri'
+require 'cgi'
 require 'json'
 require 'thread'
 require 'uuid'
@@ -222,11 +222,11 @@ _EOH_
     end
 
     if $settings.recreate_dbs
-      r = from_json(delete("/#{db_name}").body)
+      r = from_json(delete("/#{CGI.escape(db_name)}").body)
       log_info("Deleted DB named `#{db_name}'") if r["ok"]
     end
 
-    r = from_json(put("/#{db_name}").body)
+    r = from_json(put("/#{CGI.escape(db_name)}").body)
     if not r["ok"]
       if r["error"] == "file_exists"
         log_info "DB `#{db_name}' already exists"
@@ -241,7 +241,7 @@ _EOH_
     create_docs db_name
 
     if not $settings.sec_obj.nil?
-      r = from_json(put("/#{db_name}/_security", $settings.sec_obj).body)
+      r = from_json(put("/#{CGI.escape(db_name)}/_security", $settings.sec_obj).body)
       if not r["ok"]
         log_error("Error setting the security object for DB `#{db_name}'", r)
       else
@@ -354,7 +354,7 @@ _EOH_
         if (docs.length >= 0 and docs.length >= $settings.doc_batch_size) or
             (docs.length >= 0 and i == last_doc_id)
           t1 = Time.now
-          req = post("/" + db_name + "/_bulk_docs", {:docs => docs})
+          req = post("/" + CGI.escape(db_name) + "/_bulk_docs", {:docs => docs})
           t2 = Time.now
           times.push(t2 - t1)
           r = from_json req.body
@@ -414,7 +414,7 @@ _EOH_
     doc.delete "_attachments"
 
     1.upto(num_revs) do |i|
-      uri = "/#{db_name}/#{doc['_id']}"
+      uri = "/#{CGI.escape(db_name)}/#{doc['_id']}"
       if not doc_rev.nil?
          uri += ("?rev=" + doc_rev)
          doc["_rev"] = doc_rev
@@ -447,7 +447,7 @@ _EOH_
 
   def self.upload_doc_atts(db_name, doc, doc_rev, atts)
     doc_id = doc["_id"]
-    doc_path = "/#{db_name}/#{doc_id}"
+    doc_path = "/#{CGI.escape(db_name)}/#{doc_id}"
     times = []
 
     atts.each do |att|
@@ -600,9 +600,8 @@ _EOH_
   end
 
 
-  def self.put(path, data = '', content_type = "application/json", query = {}, escape = true)
+  def self.put(path, data = '', content_type = "application/json", query = {})
     url = path + hash_to_query_string(query)
-    url = URI.escape(url) if escape
     req = Net::HTTP::Put.new(url)
     req["content-type"] = content_type
     req.body = to_json(data)
@@ -610,9 +609,8 @@ _EOH_
   end
 
 
-  def self.post(path, data = '', content_type = "application/json", query = {}, escape = true)
+  def self.post(path, data = '', content_type = "application/json", query = {})
     url = path + hash_to_query_string(query)
-    url = URI.escape(url) if escape
     req = Net::HTTP::Post.new(url)
     req["content-type"] = content_type
     req.body = to_json(data)
@@ -620,9 +618,8 @@ _EOH_
   end
 
 
-  def self.put_stream(path, streamer, content_type = nil, query = {}, escape = true)
+  def self.put_stream(path, streamer, content_type = nil, query = {})
     url = path + hash_to_query_string(query)
-    url = URI.escape(url) if escape
     req = Net::HTTP::Put.new(url)
     req["content-type"] = content_type if not content_type.nil?
     req["transfer-encoding"] = "chunked"
@@ -634,16 +631,14 @@ _EOH_
   end
 
 
-  def self.get(path, query = {}, escape = true)
+  def self.get(path, query = {})
     url = path + hash_to_query_string(query)
-    url = URI.escape(url) if escape
     request Net::HTTP::Get.new(url)
   end
 
 
-  def self.delete(path, escape = true)
+  def self.delete(path)
     url = path
-    url = URI.escape(url) if escape
     request Net::HTTP::Delete.new(url)
   end
 
