@@ -362,7 +362,7 @@ _EOH_
             log_error "_bulk_docs did not return an array"
           else
             r.each do |doc_r|
-              if doc_r["ok"]
+              if doc_r["rev"]
                 doc_revs[doc_r["id"]] = doc_r["rev"]
               else
                 log_error "Error uploading document #{doc_r['id']} via _bulk_docs (revision number #{rev_iter})"
